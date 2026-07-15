@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Terminal window body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,36 L78,36 C80.2,36 82,37.8 82,40 L82,72 C82,74.2 80.2,76 78,76 L30,76 C27.8,76 26,74.2 26,72 L26,40 C26,37.8 27.8,36 30,36 Z" />
+
+    <!-- Terminal title bar -->
+    <path
+        android:fillColor="#E0F7FA"
+        android:pathData="M30,36 L78,36 C80.2,36 82,37.8 82,40 L82,46 L26,46 L26,40 C26,37.8 27.8,36 30,36 Z" />
+
+    <!-- Title bar dots -->
+    <path
+        android:fillColor="#EF5350"
+        android:pathData="M32,41 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M40,41 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M48,41 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
+
+    <!-- Command prompt ">" -->
+    <path
+        android:fillColor="#0097A7"
+        android:pathData="M36,56 L42,60 L36,64" />
+
+    <!-- Cursor block -->
+    <path
+        android:fillColor="#00BCD4"
+        android:pathData="M46,55 L50,55 L50,65 L46,65 Z" />
+
+    <!-- Subtle code lines -->
+    <path
+        android:fillColor="#B2EBF2"
+        android:pathData="M36,69 L58,69"
+        android:strokeWidth="0"
+        android:strokeColor="#00000000" />
+    <path
+        android:fillColor="#B2EBF2"
+        android:pathData="M62,69 L72,69"
+        android:strokeWidth="0"
+        android:strokeColor="#00000000" />
+
+</vector>
