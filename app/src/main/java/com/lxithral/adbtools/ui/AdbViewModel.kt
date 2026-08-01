@@ -2,15 +2,17 @@ package com.lxithral.adbtools.ui
 
 import android.app.Application
 import android.content.Context
+import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.lxithral.adbtools.logic.AdbManager
 import com.lxithral.adbtools.logic.WirelessDebugging
 import com.lxithral.adbtools.logic.executeShellCommand
+import com.lxithral.adbtools.memory.FairMemoryReceiver
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,7 +24,11 @@ import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-class AdbViewModel(application: Application) : AndroidViewModel(application) {
+class AdbViewModel(application: Application) : AndroidViewModel(application), FairMemoryReceiver.MemoryCleaner {
+
+    companion object {
+        private const val TAG = "AdbViewModel"
+    }
 
     var wirelessAdbEnabled by mutableStateOf(value = false)
         private set
@@ -48,13 +54,7 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
     var port by mutableStateOf(value = "")
         private set
 
-    var fixedPortEnabled by mutableStateOf(value = false)
-        private set
-
-    var fixedPortValue by mutableStateOf(value = "")
-        private set
-
-    var themeMode by mutableStateOf(value = 0) // 0: System, 1: Light, 2: Dark
+    var themeMode by mutableStateOf(value = 0)
         private set
 
     private val sharedPrefs = application.getSharedPreferences("adb_prefs", Context.MODE_PRIVATE)
@@ -62,25 +62,26 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         themeMode = sharedPrefs.getInt("theme_mode", 0)
-        fixedPortEnabled = sharedPrefs.getBoolean("fixed_port_enabled", false)
-        fixedPortValue = sharedPrefs.getString("fixed_port", "") ?: ""
-
-        startPolling()
+        FairMemoryReceiver.getInstance().registerCleaner(this)
     }
 
-    private fun startPolling() {
-        pollingJob?.cancel()
+    fun startPolling() {
+        if (pollingJob?.isActive == true) return
         pollingJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 refreshStateSync()
-                delay(1.seconds)
+                delay(10.seconds)
             }
         }
     }
 
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
     fun refreshState() {
         viewModelScope.launch(Dispatchers.IO) {
-            // 重新触发 Root 检查
             Shell.getShell()
             refreshStateSync()
         }
@@ -88,12 +89,24 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshStateSync() {
         val context = getApplication<Application>()
-        wirelessAdbEnabled = WirelessDebugging.getEnabled(context)
-        usbAdbEnabled = AdbManager.isUsbAdbEnabled(context)
 
-        developerOptionsEnabled = executeShellCommand("settings get global development_settings_enabled", context).trim() == "1"
-        usbInstallEnabled = executeShellCommand("getprop persist.security.adbinstall", context).trim() == "1"
-        usbSecurityEnabled = executeShellCommand("getprop persist.security.adbinput", context).trim() == "1"
+        // 合并多条 shell 命令为一次执行
+        val batchResult = executeShellCommand(
+            "echo \"$(settings get global adb_wifi_enabled)\" && " +
+            "echo \"$(settings get global adb_enabled)\" && " +
+            "echo \"$(settings get global development_settings_enabled)\" && " +
+            "echo \"$(getprop persist.security.adbinstall)\" && " +
+            "echo \"$(getprop persist.security.adbinput)\" && " +
+            "echo \"$(getprop service.adb.tls.port)\"",
+            context
+        ).lines()
+
+        wirelessAdbEnabled = batchResult.getOrElse(0) { "" }.trim() == "1" ||
+            WirelessDebugging.getEnabled(context)
+        usbAdbEnabled = batchResult.getOrElse(1) { "" }.trim() == "1"
+        developerOptionsEnabled = batchResult.getOrElse(2) { "" }.trim() == "1"
+        usbInstallEnabled = batchResult.getOrElse(3) { "" }.trim() == "1"
+        usbSecurityEnabled = batchResult.getOrElse(4) { "" }.trim() == "1"
 
         rootGranted = Shell.isAppGrantedRoot() == true
         ipAddress = WirelessDebugging.getAddress(context)
@@ -102,12 +115,12 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleDeveloperOptions(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        executeAction("settings put global development_settings_enabled $value", "${if (enabled) "开启" else "关闭"}开发者选项")
+        executeAction("settings put global development_settings_enabled $value", if (enabled) "开启" else "关闭")
     }
 
     fun toggleUsbDebugging(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        executeAction("settings put global adb_enabled $value", "${if (enabled) "开启" else "关闭"} USB 调试")
+        executeAction("settings put global adb_enabled $value", if (enabled) "开启" else "关闭")
     }
 
     fun toggleUsbInstall(enabled: Boolean) {
@@ -116,65 +129,15 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
             val isMiui = executeShellCommand("getprop ro.miui.ui.version.name", context).isNotBlank()
 
             if (isMiui) {
-                val xmlFile = "/data/data/com.miui.securitycenter/shared_prefs/remote_provider_preferences.xml"
-                val scriptContent = if (enabled) {
-                    """
-                    #!/system/bin/sh
-                    XML_FILE=$xmlFile
-                    echo "Enable Installation via USB"
-                    LINE_NO=`grep -n "security_adb_install_enable" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
-                    if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
-                        sed -i '/security_adb_install_enable/s/false/true/' ${'$'}XML_FILE
-                    else
-                        sed -i '3a \    <boolean name="security_adb_install_enable" value="true" />' ${'$'}XML_FILE
-                    fi
-                    echo "Disable install intercept"
-                    LINE_NO=`grep -n "permcenter_install_intercept_enabled" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
-                    if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
-                        sed -i '/permcenter_install_intercept_enabled/s/true/false/' ${'$'}XML_FILE
-                    else
-                        sed -i '3a \    <boolean name="permcenter_install_intercept_enabled" value="false" />' ${'$'}XML_FILE
-                    fi
-                    kill -9 $(pidof com.miui.securitycenter.remote)
-                    setprop persist.security.adbinstall 1
-                    echo "USB 安装已开启"
-                    """.trimIndent()
-                } else {
-                    """
-                    #!/system/bin/sh
-                    XML_FILE=$xmlFile
-                    echo "Disable Installation via USB"
-                    LINE_NO=`grep -n "security_adb_install_enable" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
-                    if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
-                        sed -i '/security_adb_install_enable/s/true/false/' ${'$'}XML_FILE
-                    else
-                        sed -i '3a \    <boolean name="security_adb_install_enable" value="false" />' ${'$'}XML_FILE
-                    fi
-                    echo "Enable install intercept"
-                    LINE_NO=`grep -n "permcenter_install_intercept_enabled" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
-                    if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
-                        sed -i '/permcenter_install_intercept_enabled/s/false/true/' ${'$'}XML_FILE
-                    else
-                        sed -i '3a \    <boolean name="permcenter_install_intercept_enabled" value="true" />' ${'$'}XML_FILE
-                    fi
-                    kill -9 $(pidof com.miui.securitycenter.remote)
-                    setprop persist.security.adbinstall 0
-                    echo "USB 安装已关闭"
-                    """.trimIndent()
-                }
-
+                val scriptContent = buildMiuioUsbInstallScript(enabled)
                 try {
                     val tempFile = File(context.cacheDir, "usb_install.sh")
                     tempFile.writeText(scriptContent)
-                    // 使用 sh 执行，不一定需要文件系统层级的可执行权限，但加上更稳
                     tempFile.setExecutable(true, false)
-
-                    val result = executeShellCommand("sh ${tempFile.absolutePath}", context)
-                    android.util.Log.d("AdbViewModel", "toggleUsbInstall result: ${'$'}result")
-
+                    executeShellCommand("sh ${tempFile.absolutePath}", context)
                     tempFile.delete()
                 } catch (e: Exception) {
-                    android.util.Log.e("AdbViewModel", "Script execution failed", e)
+                    Log.e(TAG, "Script execution failed", e)
                 }
             } else {
                 val value = if (enabled) "1" else "0"
@@ -182,16 +145,44 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "${if (enabled) "开启" else "关闭"} USB 安装", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, if (enabled) "已开启 USB 安装" else "已关闭 USB 安装", Toast.LENGTH_SHORT).show()
             }
             delay(200.milliseconds)
             refreshStateSync()
         }
     }
 
+    private fun buildMiuioUsbInstallScript(enable: Boolean): String {
+        val xmlFile = "/data/data/com.miui.securitycenter/shared_prefs/remote_provider_preferences.xml"
+        val installValue = if (enable) "true" else "false"
+        val interceptValue = if (enable) "false" else "true"
+        val label = if (enable) "开启" else "关闭"
+        val adbInstall = if (enable) "1" else "0"
+        return """
+            #!/system/bin/sh
+            XML_FILE=$xmlFile
+            echo "$label Installation via USB"
+            LINE_NO=`grep -n "security_adb_install_enable" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
+            if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
+                sed -i '/security_adb_install_enable/s/$installValue/'${if (enable) "true" else "false"}'/' ${'$'}XML_FILE
+            else
+                sed -i '3a \    <boolean name="security_adb_install_enable" value="$installValue" />' ${'$'}XML_FILE
+            fi
+            LINE_NO=`grep -n "permcenter_install_intercept_enabled" ${'$'}XML_FILE | awk -F: '{print ${'$'}1}'`
+            if [ "${'$'}LINE_NO" != "" ] && [ ${'$'}LINE_NO -gt 0 ]; then
+                sed -i '/permcenter_install_intercept_enabled/s/${if (enable) "true" else "false"}/$interceptValue/' ${'$'}XML_FILE
+            else
+                sed -i '3a \    <boolean name="permcenter_install_intercept_enabled" value="$interceptValue" />' ${'$'}XML_FILE
+            fi
+            kill -9 $(pidof com.miui.securitycenter.remote)
+            setprop persist.security.adbinstall $adbInstall
+            echo "USB 安装已$label"
+        """.trimIndent()
+    }
+
     fun toggleUsbSecurity(enabled: Boolean) {
         val value = if (enabled) "1" else "0"
-        executeAction("setprop persist.security.adbinput $value", "${if (enabled) "开启" else "关闭"} USB 调试安全设置")
+        executeAction("setprop persist.security.adbinput $value", if (enabled) "开启" else "关闭")
     }
 
     private fun executeAction(command: String, label: String) {
@@ -210,10 +201,6 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             WirelessDebugging.setEnabled(context, enabled)
-            if (enabled) {
-                delay(300.milliseconds)
-                WirelessDebugging.syncConnectionData(context)
-            }
             delay(200.milliseconds)
             refreshStateSync()
         }
@@ -221,46 +208,57 @@ class AdbViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTheme(mode: Int) {
         themeMode = mode
-        sharedPrefs.edit { putInt("theme_mode", mode) }
+        sharedPrefs.edit().putInt("theme_mode", mode).apply()
     }
 
-    fun toggleFixedPortEnabled(enabled: Boolean) {
-        fixedPortEnabled = enabled
-        sharedPrefs.edit { putBoolean("fixed_port_enabled", enabled) }
-        if (enabled && fixedPortValue.isNotEmpty()) {
-            applyFixedPort(fixedPortValue)
-        }
-    }
+    // MemoryCleaner 实现
 
-    fun updateFixedPort(port: String) {
-        fixedPortValue = port
-        sharedPrefs.edit { putString("fixed_port", port) }
-        if (fixedPortEnabled && port.isNotEmpty()) {
-            applyFixedPort(port)
-        }
-    }
+    override fun onTrim(data: FairMemoryReceiver.MemoryData) {
+        Log.d(TAG, "onTrim: type=${data.notifyType}, pss=${data.pss}KB/${data.pssLimit}KB, heap=${data.heapSize}KB/${data.heapCapacity}KB")
 
-    private fun applyFixedPort(port: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val context = getApplication<Application>()
-            val command = "setprop service.adb.tls.port $port"
-            executeShellCommand(command, context)
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "已设置固定端口: $port", Toast.LENGTH_SHORT).show()
+            when (data.notifyType) {
+                FairMemoryReceiver.NOTIFY_TYPE_PHYSICAL_MEMORY -> {
+                    val context = getApplication<Application>()
+                    context.cacheDir?.deleteRecursively()
+                }
+                FairMemoryReceiver.NOTIFY_TYPE_JAVA_HEAP -> {
+                    // 依赖系统自动 GC，不手动调用
+                }
             }
-            delay(200.milliseconds)
+            delay(100)
             refreshStateSync()
         }
     }
 
-    private inline fun android.content.SharedPreferences.edit(action: android.content.SharedPreferences.Editor.() -> Unit) {
-        val editor = edit()
-        action(editor)
-        editor.apply()
+    override fun onKill(data: FairMemoryReceiver.MemoryData): Boolean {
+        Log.d(TAG, "onKill: type=${data.notifyType}, saving state...")
+        viewModelScope.launch(Dispatchers.IO) {
+            saveApplicationState(getApplication())
+        }
+        return true
+    }
+
+    private fun saveApplicationState(context: Context) {
+        try {
+            sharedPrefs.edit().apply {
+                putBoolean("developer_options", developerOptionsEnabled)
+                putBoolean("usb_debugging", usbAdbEnabled)
+                putBoolean("wireless_debugging", wirelessAdbEnabled)
+                putBoolean("usb_install", usbInstallEnabled)
+                putBoolean("usb_security", usbSecurityEnabled)
+                putInt("theme_mode", themeMode)
+                apply()
+            }
+            Log.d(TAG, "Application state saved")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save state", e)
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
+        FairMemoryReceiver.getInstance().unregisterCleaner(this)
     }
 }

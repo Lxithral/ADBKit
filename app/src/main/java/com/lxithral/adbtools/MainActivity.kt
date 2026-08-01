@@ -8,7 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import com.lxithral.adbtools.logic.getPrivilegeLevel
+import com.lxithral.adbtools.memory.FairMemoryReceiver
+import com.lxithral.adbtools.tile.BaseTileService
 import com.lxithral.adbtools.ui.AdbScreen
 import com.lxithral.adbtools.ui.AdbViewModel
 import com.topjohnwu.superuser.Shell
@@ -22,10 +23,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        
+
+        // 取消 tile 触发的延迟自杀
+        BaseTileService.cancelPendingKill()
+
+        // 初始化公平运行内存接收器（仅在 Activity 打开时）
+        FairMemoryReceiver.getInstance().initialize(this)
+
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // 尝试获取 Shell 以触发授权弹窗
         Shell.getShell {
             viewModel.refreshState()
         }
@@ -54,6 +60,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.refreshState()
+        viewModel.startPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.stopPolling()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Activity 销毁时清理
+        FairMemoryReceiver.getInstance().destroy()
     }
 }

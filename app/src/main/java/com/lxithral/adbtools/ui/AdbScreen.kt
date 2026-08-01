@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
@@ -25,13 +24,12 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.lxithral.adbtools.R
+
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -178,8 +176,11 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
             ) {
                 SwitchPreference(
                     title = "无线调试",
-                    summary = if (viewModel.wirelessAdbEnabled) "已开启 (${viewModel.ipAddress}:${viewModel.port})" else "已关闭",
+                    summary = if (!viewModel.developerOptionsEnabled) "请先开启开发者选项"
+                              else if (viewModel.wirelessAdbEnabled) "已开启 (${viewModel.ipAddress}:${viewModel.port})"
+                              else "已关闭",
                     checked = viewModel.wirelessAdbEnabled,
+                    enabled = viewModel.developerOptionsEnabled,
                     onCheckedChange = { viewModel.toggleWirelessAdb(it) },
                     startAction = {
                         Icon(
@@ -196,75 +197,13 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
                     exit = shrinkVertically(shrinkTowards = Alignment.Top)
                 ) {
                     Column {
-                        var showPortDialog by remember { mutableStateOf(false) }
-                        var portInput by remember { mutableStateOf(viewModel.fixedPortValue) }
-
-                        SwitchPreference(
-                            title = "固定无线调试端口",
-                            summary = if (viewModel.fixedPortEnabled) "已开启" else "已关闭",
-                            checked = viewModel.fixedPortEnabled,
-                            onCheckedChange = { viewModel.toggleFixedPortEnabled(it) },
-                            startAction = {
-                                Icon(
-                                    painter = painterResource(R.drawable.tile_ic_wireless_debugging),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = MiuixTheme.colorScheme.onSurface
-                                )
-                            }
-                        )
-                        AnimatedVisibility(
-                            visible = viewModel.fixedPortEnabled,
-                            enter = expandVertically(expandFrom = Alignment.Top),
-                            exit = shrinkVertically(shrinkTowards = Alignment.Top)
-                        ) {
-                            Column {
-                                ArrowPreference(
-                                    title = "设置端口",
-                                    summary = if (viewModel.fixedPortValue.isNotEmpty()) viewModel.fixedPortValue else "未设置",
-                                    onClick = {
-                                        portInput = viewModel.fixedPortValue
-                                        showPortDialog = true
-                                    },
-                                    holdDownState = showPortDialog
-                                )
-                                OverlayDialog(
-                                    title = "设置固定端口",
-                                    show = showPortDialog,
-                                    onDismissRequest = { showPortDialog = false }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        TextField(
-                                            value = portInput,
-                                            onValueChange = { portInput = it },
-                                            label = "端口号",
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        TextButton(
-                                            text = "取消",
-                                            onClick = { showPortDialog = false },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TextButton(
-                                            text = "确认",
-                                            onClick = {
-                                                viewModel.updateFixedPort(portInput)
-                                                showPortDialog = false
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.textButtonColorsPrimary()
-                                        )
-                                    }
-                                }
-                            }
+                        if (viewModel.wirelessAdbEnabled && viewModel.ipAddress.isNotEmpty()) {
+                            Text(
+                                text = "${viewModel.ipAddress}:${viewModel.port}",
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
                         }
                     }
                 }
@@ -461,3 +400,4 @@ private fun DebugStatCard(title: String, status: String, modifier: Modifier = Mo
         }
     }
 }
+
