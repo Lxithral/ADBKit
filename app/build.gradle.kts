@@ -2,9 +2,17 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 val keystoreProperties = Properties().apply {
-    val keystorePropertiesFile = rootProject.file("keystore.properties")
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use { load(it) }
+    // 凭据文件不放在仓库里：优先读取用户 Gradle 目录 ~/.gradle/keystore.properties，
+    // 其次尝试项目根目录（旧约定，该路径已被 .gitignore 忽略，不会入库）
+    val externalFile = File(System.getProperty("user.home"), ".gradle/keystore.properties")
+    val projectFile = rootProject.file("keystore.properties")
+    val file = when {
+        externalFile.exists() -> externalFile
+        projectFile.exists() -> projectFile
+        else -> null
+    }
+    if (file != null) {
+        file.inputStream().use { load(it) }
     }
 }
 
@@ -21,8 +29,8 @@ android {
         applicationId = "com.lxithral.adbtools"
         minSdk = 33
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.2"
+        versionCode = 3
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 回到前台时解除磁贴挂起的自杀计时
+        BaseTileService.cancelPendingKill()
         viewModel.startPolling()
     }
 
