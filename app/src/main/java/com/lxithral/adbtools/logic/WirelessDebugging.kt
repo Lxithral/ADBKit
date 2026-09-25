@@ -16,11 +16,10 @@ object WirelessDebugging {
         val result = executeShellCommand(command, context).trim()
         if (result == "1") return true
 
-        // 兜底：检查端口属性
-        val port = Shell.cmd("getprop service.adb.tls.port").exec().out.firstOrNull()?.trim()
-        val isActive = !port.isNullOrBlank() && port != "0" && port != "-1"
+        // 兜底：检查端口属性（无需 Root）
+        val isActive = getPort(context).isNotEmpty()
 
-        Log.d(TAG, "getEnabled: settings=$result, port=$port, isActive=$isActive")
+        Log.d(TAG, "getEnabled: settings=$result, isActive=$isActive")
         return isActive
     }
 
@@ -31,12 +30,19 @@ object WirelessDebugging {
         Log.d(TAG, "setEnabled: $value")
     }
 
-    fun getPort(context: Context): String =
-        if (getPrivilegeLevel(PrivilegeLevel.Root, context) == PrivilegeLevel.Root) {
-            Shell.cmd("getprop service.adb.tls.port").exec().out.firstOrNull()?.trim() ?: ""
-        } else {
-            ""
+    /**
+     * 无线调试端口。
+     * `service.adb.tls.port` 由 adbd 在无线调试开启后写入（Android 11+），是全局可读的
+     * 系统属性——系统设置页的"IP 地址和端口"同样读它，因此这里不需要 Root。
+     */
+    fun getPort(context: Context): String {
+        val candidates = listOf("service.adb.tls.port", "service.adb.tcp.port")
+        for (prop in candidates) {
+            val value = Shell.cmd("getprop $prop").exec().out.firstOrNull()?.trim()
+            if (!value.isNullOrEmpty() && value != "0" && value != "-1") return value
         }
+        return ""
+    }
 
     fun getAddress(context: Context): String {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager

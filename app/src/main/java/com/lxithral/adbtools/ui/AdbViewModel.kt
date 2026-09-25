@@ -54,14 +54,10 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
     var port by mutableStateOf(value = "")
         private set
 
-    var themeMode by mutableStateOf(value = 0)
-        private set
-
     private val sharedPrefs = application.getSharedPreferences("adb_prefs", Context.MODE_PRIVATE)
     private var pollingJob: Job? = null
 
     init {
-        themeMode = sharedPrefs.getInt("theme_mode", 0)
         FairMemoryReceiver.getInstance().registerCleaner(this)
     }
 
@@ -110,7 +106,8 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
 
         rootGranted = Shell.isAppGrantedRoot() == true
         ipAddress = WirelessDebugging.getAddress(context)
-        port = WirelessDebugging.getPort(context)
+        // 批量命令里已带回 service.adb.tls.port；无 Root 时批量命令拿不到，单独补查（属性全局可读）
+        port = batchResult.getOrElse(5) { "" }.trim().ifEmpty { WirelessDebugging.getPort(context) }
     }
 
     fun toggleDeveloperOptions(enabled: Boolean) {
@@ -203,12 +200,10 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
             WirelessDebugging.setEnabled(context, enabled)
             delay(200.milliseconds)
             refreshStateSync()
+            // 端口属性由 adbd 稍后写入，补刷一次
+            delay(1500)
+            refreshStateSync()
         }
-    }
-
-    fun setTheme(mode: Int) {
-        themeMode = mode
-        sharedPrefs.edit().putInt("theme_mode", mode).apply()
     }
 
     // MemoryCleaner 实现
@@ -247,7 +242,6 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
                 putBoolean("wireless_debugging", wirelessAdbEnabled)
                 putBoolean("usb_install", usbInstallEnabled)
                 putBoolean("usb_security", usbSecurityEnabled)
-                putInt("theme_mode", themeMode)
                 apply()
             }
             Log.d(TAG, "Application state saved")

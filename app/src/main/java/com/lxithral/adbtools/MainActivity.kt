@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -12,8 +13,8 @@ import com.lxithral.adbtools.memory.FairMemoryReceiver
 import com.lxithral.adbtools.tile.BaseTileService
 import com.lxithral.adbtools.ui.AdbScreen
 import com.lxithral.adbtools.ui.AdbViewModel
+import com.lxithral.adbtools.ui.theme.ThemeState
 import com.topjohnwu.superuser.Shell
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
@@ -30,6 +31,9 @@ class MainActivity : ComponentActivity() {
         // 初始化公平运行内存接收器（仅在 Activity 打开时）
         FairMemoryReceiver.getInstance().initialize(this)
 
+        // 外观设置状态源（ThemeState 自身持久化、即时生效）
+        ThemeState.init(this)
+
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         Shell.getShell {
@@ -37,20 +41,15 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val controller = remember(viewModel.themeMode) {
-                val mode = when (viewModel.themeMode) {
-                    1 -> ColorSchemeMode.Light
-                    2 -> ColorSchemeMode.Dark
-                    else -> ColorSchemeMode.System
-                }
-                ThemeController(mode)
+            // 深浅色 / Monet / 主题色 → miuix ThemeController（指南 00 §8.3）
+            val controller = remember(ThemeState.themeMode, ThemeState.monet, ThemeState.keyColor) {
+                ThemeController(
+                    colorSchemeMode = ThemeState.colorSchemeMode(),
+                    keyColor = if (ThemeState.monet) null else Color(ThemeState.keyColor),
+                )
             }
             MiuixTheme(controller = controller) {
-                val isLight = when (viewModel.themeMode) {
-                    1 -> true
-                    2 -> false
-                    else -> resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK != android.content.res.Configuration.UI_MODE_NIGHT_YES
-                }
+                val isLight = !ThemeState.isInDarkTheme()
                 WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = isLight
                 WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars = isLight
                 AdbScreen(viewModel = viewModel)

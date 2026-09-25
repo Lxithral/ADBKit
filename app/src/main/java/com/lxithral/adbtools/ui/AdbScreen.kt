@@ -1,13 +1,15 @@
 package com.lxithral.adbtools.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -15,7 +17,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,10 +27,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lxithral.adbtools.R
+import com.lxithral.adbtools.ui.component.BlurredBar
+import com.lxithral.adbtools.ui.component.rememberBlurBackdrop
+import com.lxithral.adbtools.ui.navigation.BottomBarSlot
+import com.lxithral.adbtools.ui.theme.AccentColorPalette
+import com.lxithral.adbtools.ui.theme.ThemeState
 
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.*
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.preference.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -38,9 +45,19 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 @Composable
 fun AdbScreen(viewModel: AdbViewModel) {
     val pagerState = rememberPagerState(pageCount = { 2 })
-    val scope = rememberCoroutineScope()
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = MiuixScrollBehavior(topAppBarState)
+
+    // 玻璃采样层（指南 00 §9.1）：blurBackdrop 供标准栏毛玻璃用，backdrop 供液态玻璃折射用
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val blurBackdrop = rememberBlurBackdrop(ThemeState.blurEnabled)
+    val backdrop = rememberLayerBackdrop {
+        drawRect(surfaceColor)
+        drawContent()
+    }
+    val liquidGlassActive = ThemeState.bottomBarStyle == ThemeState.BOTTOM_BAR_LIQUID_GLASS &&
+        ThemeState.blurEnabled &&
+        isRuntimeShaderSupported()
 
     Scaffold(
         topBar = {
@@ -51,31 +68,28 @@ fun AdbScreen(viewModel: AdbViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                    icon = MiuixIcons.Home,
-                    label = "主页"
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                    icon = MiuixIcons.Settings,
-                    label = "设置"
-                )
-            }
+            BottomBarSlot(
+                blurBackdrop = blurBackdrop,
+                backdrop = backdrop,
+                pagerState = pagerState,
+            )
         },
         contentWindowInsets = WindowInsets.navigationBars
     ) { padding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1
-        ) { page ->
-            when (page) {
-                0 -> HomeContent(viewModel, padding, scrollBehavior)
-                1 -> SettingsContent(viewModel, padding, scrollBehavior)
+        Box(
+            modifier = if (blurBackdrop != null) Modifier.layerBackdrop(blurBackdrop) else Modifier
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (liquidGlassActive) Modifier.layerBackdrop(backdrop) else Modifier),
+                beyondViewportPageCount = 1
+            ) { page ->
+                when (page) {
+                    0 -> HomeContent(viewModel, padding, scrollBehavior)
+                    1 -> SettingsContent(viewModel, padding, scrollBehavior)
+                }
             }
         }
     }
@@ -174,11 +188,16 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp)
             ) {
+                val ipValid = isIpv4(viewModel.ipAddress)
                 SwitchPreference(
                     title = "无线调试",
-                    summary = if (!viewModel.developerOptionsEnabled) "请先开启开发者选项"
-                              else if (viewModel.wirelessAdbEnabled) "已开启 (${viewModel.ipAddress}:${viewModel.port})"
-                              else "已关闭",
+                    summary = when {
+                        !viewModel.developerOptionsEnabled -> "请先开启开发者选项"
+                        viewModel.wirelessAdbEnabled && ipValid && viewModel.port.isNotEmpty() ->
+                            "已开启 (${viewModel.ipAddress}:${viewModel.port})"
+                        viewModel.wirelessAdbEnabled -> "已开启"
+                        else -> "已关闭"
+                    },
                     checked = viewModel.wirelessAdbEnabled,
                     enabled = viewModel.developerOptionsEnabled,
                     onCheckedChange = { viewModel.toggleWirelessAdb(it) },
@@ -196,16 +215,18 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
                     enter = expandVertically(expandFrom = Alignment.Top),
                     exit = shrinkVertically(shrinkTowards = Alignment.Top)
                 ) {
-                    Column {
-                        if (viewModel.wirelessAdbEnabled && viewModel.ipAddress.isNotEmpty()) {
-                            Text(
-                                text = "${viewModel.ipAddress}:${viewModel.port}",
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
+                    // 端口由 adbd 稍后写入；拿不到时绝不显示悬空的"IP:"
+                    val addressText = when {
+                        !isIpv4(viewModel.ipAddress) -> "未连接 Wi-Fi"
+                        viewModel.port.isEmpty() -> "端口获取中…"
+                        else -> "连接地址：${viewModel.ipAddress}:${viewModel.port}"
                     }
+                    Text(
+                        text = addressText,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
             }
         }
@@ -214,6 +235,7 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
 
 @Composable
 fun SettingsContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior: ScrollBehavior) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -227,18 +249,59 @@ fun SettingsContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehav
         item {
             SmallTitle(text = "外观")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                val themeOptions = listOf("跟随系统", "浅色", "深色")
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                    TabRow(
+                        tabs = listOf("跟随系统", "浅色", "深色"),
+                        selectedTabIndex = ThemeState.themeMode,
+                        onTabSelected = { ThemeState.setThemeMode(it) },
+                    )
+                }
+                SwitchPreference(
+                    title = "动态取色",
+                    summary = "跟随系统壁纸配色（Monet）",
+                    checked = ThemeState.monet,
+                    onCheckedChange = { ThemeState.setMonet(it) }
+                )
+                AnimatedVisibility(visible = !ThemeState.monet) {
+                    OverlayDropdownPreference(
+                        title = "主题色",
+                        summary = "关闭动态取色时生效",
+                        items = AccentColorPalette.map { it.first },
+                        selectedIndex = AccentColorPalette
+                            .indexOfFirst { it.second == ThemeState.keyColor }
+                            .takeIf { it >= 0 } ?: 0,
+                        onSelectedIndexChange = { ThemeState.setKeyColor(AccentColorPalette[it].second) }
+                    )
+                }
+                SwitchPreference(
+                    title = "模糊",
+                    summary = "毛玻璃与液态玻璃效果（需要 Android 13+）",
+                    checked = ThemeState.blurEnabled,
+                    onCheckedChange = { ThemeState.setBlurEnabled(it) }
+                )
                 OverlayDropdownPreference(
-                    title = "主题",
-                    items = themeOptions,
-                    selectedIndex = viewModel.themeMode,
-                    onSelectedIndexChange = { viewModel.setTheme(it) }
+                    title = "底栏形态",
+                    items = listOf("标准", "悬浮", "液态玻璃"),
+                    selectedIndex = ThemeState.bottomBarStyle,
+                    onSelectedIndexChange = { ThemeState.setBottomBarStyle(it) }
+                )
+                val predictiveBackSupported =
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                SwitchPreference(
+                    title = "预测性返回手势",
+                    summary = if (predictiveBackSupported) "系统返回时预览上一页，切换后立即生效"
+                              else "需要 Android 14 及以上",
+                    checked = ThemeState.predictiveBack,
+                    enabled = predictiveBackSupported,
+                    onCheckedChange = {
+                        ThemeState.setPredictiveBack(it, context)
+                        context.findActivity()?.recreate()
+                    }
                 )
             }
         }
         item {
             SmallTitle(text = "关于")
-            val context = LocalContext.current
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                 ArrowPreference(
                     title = "关于本项目",
@@ -247,39 +310,35 @@ fun SettingsContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehav
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Lxithral/ADBKit")))
                     }
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Lxithral")))
-                        }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.avatar),
-                        contentDescription = "开发者头像",
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "开发者",
-                            style = MiuixTheme.textStyles.title3
+                ArrowPreference(
+                    title = "开发者",
+                    summary = "L'xithral",
+                    startAction = {
+                        Image(
+                            painter = painterResource(R.drawable.avatar),
+                            contentDescription = "开发者头像",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
                         )
-                        Text(
-                            text = "L'xithral",
-                            style = MiuixTheme.textStyles.body2,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                        )
+                    },
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Lxithral")))
                     }
-                }
+                )
             }
         }
     }
+}
+
+private fun isIpv4(value: String): Boolean =
+    value.matches(Regex("""^(\d{1,3}\.){3}\d{1,3}$"""))
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
@@ -400,4 +459,3 @@ private fun DebugStatCard(title: String, status: String, modifier: Modifier = Mo
         }
     }
 }
-
