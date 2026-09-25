@@ -1,11 +1,7 @@
 package com.lxithral.adbtools.ui
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -27,10 +23,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lxithral.adbtools.R
-import com.lxithral.adbtools.ui.component.BlurredBar
 import com.lxithral.adbtools.ui.component.rememberBlurBackdrop
 import com.lxithral.adbtools.ui.navigation.BottomBarSlot
-import com.lxithral.adbtools.ui.theme.AccentColorPalette
 import com.lxithral.adbtools.ui.theme.ThemeState
 
 import top.yukonga.miuix.kmp.basic.*
@@ -50,13 +44,12 @@ fun AdbScreen(viewModel: AdbViewModel) {
 
     // 玻璃采样层（指南 00 §9.1）：blurBackdrop 供标准栏毛玻璃用，backdrop 供液态玻璃折射用
     val surfaceColor = MiuixTheme.colorScheme.surface
-    val blurBackdrop = rememberBlurBackdrop(ThemeState.blurEnabled)
+    val blurBackdrop = rememberBlurBackdrop(enableBlur = true)
     val backdrop = rememberLayerBackdrop {
         drawRect(surfaceColor)
         drawContent()
     }
     val liquidGlassActive = ThemeState.bottomBarStyle == ThemeState.BOTTOM_BAR_LIQUID_GLASS &&
-        ThemeState.blurEnabled &&
         isRuntimeShaderSupported()
 
     Scaffold(
@@ -249,54 +242,17 @@ fun SettingsContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehav
         item {
             SmallTitle(text = "外观")
             Card(modifier = Modifier.padding(horizontal = 12.dp)) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                    TabRow(
-                        tabs = listOf("跟随系统", "浅色", "深色"),
-                        selectedTabIndex = ThemeState.themeMode,
-                        onTabSelected = { ThemeState.setThemeMode(it) },
-                    )
-                }
-                SwitchPreference(
-                    title = "动态取色",
-                    summary = "跟随系统壁纸配色（Monet）",
-                    checked = ThemeState.monet,
-                    onCheckedChange = { ThemeState.setMonet(it) }
-                )
-                AnimatedVisibility(visible = !ThemeState.monet) {
-                    OverlayDropdownPreference(
-                        title = "主题色",
-                        summary = "关闭动态取色时生效",
-                        items = AccentColorPalette.map { it.first },
-                        selectedIndex = AccentColorPalette
-                            .indexOfFirst { it.second == ThemeState.keyColor }
-                            .takeIf { it >= 0 } ?: 0,
-                        onSelectedIndexChange = { ThemeState.setKeyColor(AccentColorPalette[it].second) }
-                    )
-                }
-                SwitchPreference(
-                    title = "模糊",
-                    summary = "毛玻璃与液态玻璃效果（需要 Android 13+）",
-                    checked = ThemeState.blurEnabled,
-                    onCheckedChange = { ThemeState.setBlurEnabled(it) }
+                OverlayDropdownPreference(
+                    title = "主题",
+                    items = listOf("跟随系统", "浅色", "深色"),
+                    selectedIndex = ThemeState.themeMode,
+                    onSelectedIndexChange = { ThemeState.setThemeMode(it) }
                 )
                 OverlayDropdownPreference(
                     title = "底栏形态",
                     items = listOf("标准", "悬浮", "液态玻璃"),
                     selectedIndex = ThemeState.bottomBarStyle,
                     onSelectedIndexChange = { ThemeState.setBottomBarStyle(it) }
-                )
-                val predictiveBackSupported =
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-                SwitchPreference(
-                    title = "预测性返回手势",
-                    summary = if (predictiveBackSupported) "系统返回时预览上一页，切换后立即生效"
-                              else "需要 Android 14 及以上",
-                    checked = ThemeState.predictiveBack,
-                    enabled = predictiveBackSupported,
-                    onCheckedChange = {
-                        ThemeState.setPredictiveBack(it, context)
-                        context.findActivity()?.recreate()
-                    }
                 )
             }
         }
@@ -334,12 +290,6 @@ fun SettingsContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehav
 
 private fun isIpv4(value: String): Boolean =
     value.matches(Regex("""^(\d{1,3}\.){3}\d{1,3}$"""))
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 @Composable
 private fun StatusCardSection(viewModel: AdbViewModel) {

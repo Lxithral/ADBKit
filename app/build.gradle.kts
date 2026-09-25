@@ -87,8 +87,6 @@ dependencies {
     // libsu for Root
     implementation("com.github.topjohnwu.libsu:core:6.0.0")
 
-    // 预测性返回：运行时反射豁免（指南 00 §10）
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     // InteractiveHighlight.kt 的 @Language(AGSL) 注解
     implementation("org.jetbrains:annotations:26.0.2-1")
 

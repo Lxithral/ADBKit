@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -41,12 +40,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // 深浅色 / Monet / 主题色 → miuix ThemeController（指南 00 §8.3）
-            val controller = remember(ThemeState.themeMode, ThemeState.monet, ThemeState.keyColor) {
-                ThemeController(
-                    colorSchemeMode = ThemeState.colorSchemeMode(),
-                    keyColor = if (ThemeState.monet) null else Color(ThemeState.keyColor),
-                )
+            // 深浅色 → miuix ThemeController
+            val controller = remember(ThemeState.themeMode) {
+                ThemeController(colorSchemeMode = ThemeState.colorSchemeMode())
             }
             MiuixTheme(controller = controller) {
                 val isLight = !ThemeState.isInDarkTheme()

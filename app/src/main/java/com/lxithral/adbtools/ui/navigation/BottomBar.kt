@@ -55,7 +55,7 @@ fun BottomBar(
     val scope = rememberCoroutineScope()
     when (ThemeState.bottomBarStyle) {
         ThemeState.BOTTOM_BAR_STANDARD -> {
-            BlurredBar(blurBackdrop, blurActive = ThemeState.blurEnabled) {
+            BlurredBar(blurBackdrop, blurActive = true) {
                 NavigationBar(
                     modifier = modifier.fillMaxWidth(),
                     color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
@@ -82,9 +82,8 @@ fun BottomBar(
                 onSelected = { scope.launch { pagerState.animateScrollToPage(it) } },
                 backdrop = backdrop,
                 tabsCount = bottomBarItems.size,
-                // ★ 关键开关：液态玻璃 = 折射透镜；模糊关闭或设备不支持时优雅降级为不透明胶囊
+                // ★ 关键开关：液态玻璃 = 折射透镜；设备不支持 RuntimeShader 时优雅降级为不透明胶囊
                 isBlurEnabled = ThemeState.bottomBarStyle == ThemeState.BOTTOM_BAR_LIQUID_GLASS &&
-                    ThemeState.blurEnabled &&
                     isRuntimeShaderSupported(),
             ) { activateTab ->
                 bottomBarItems.forEachIndexed { index, item ->
