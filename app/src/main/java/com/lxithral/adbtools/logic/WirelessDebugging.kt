@@ -32,16 +32,17 @@ object WirelessDebugging {
 
     /**
      * 无线调试端口。
-     * `service.adb.tls.port` 由 adbd 在无线调试开启后写入（Android 11+），是全局可读的
-     * 系统属性——系统设置页的"IP 地址和端口"同样读它，因此这里不需要 Root。
+     * - Android 11~16：`service.adb.tls.port` 由 adbd 写入，全局可读（系统设置页也读它）；
+     * - Android 17+/HyperOS 实测（23013RK75C）：该属性不再写入，端口只出现在
+     *   `dumpsys adb` 的 `adb_wifi{ tls_port=… }` 里（需要 root，普通 app 无 DUMP 权限）。
      */
     fun getPort(context: Context): String {
-        val candidates = listOf("service.adb.tls.port", "service.adb.tcp.port")
-        for (prop in candidates) {
+        for (prop in listOf("service.adb.tls.port", "service.adb.tcp.port")) {
             val value = Shell.cmd("getprop $prop").exec().out.firstOrNull()?.trim()
             if (!value.isNullOrEmpty() && value != "0" && value != "-1") return value
         }
-        return ""
+        val dump = Shell.cmd("dumpsys adb").exec().out.joinToString("\n")
+        return Regex("""tls_port=(\d+)""").find(dump)?.groupValues?.get(1) ?: ""
     }
 
     fun getAddress(context: Context): String {

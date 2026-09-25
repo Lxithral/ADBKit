@@ -79,10 +79,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0-alpha11")
     
     // MIUIX Dependencies
-    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
 
     // libsu for Root
     implementation("com.github.topjohnwu.libsu:core:6.0.0")
