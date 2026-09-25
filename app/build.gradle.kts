@@ -29,8 +29,8 @@ android {
         applicationId = "com.lxithral.adbtools"
         minSdk = 33
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.3"
+        versionCode = 4
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
