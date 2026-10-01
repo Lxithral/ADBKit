@@ -223,6 +223,36 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
                 }
             }
         }
+
+        item {
+            SmallTitle(text = "快捷入口")
+            val context = LocalContext.current
+            Card(
+                modifier = Modifier.padding(horizontal = 12.dp)
+            ) {
+                ArrowPreference(
+                    title = "开发者模式",
+                    summary = "跳转开发者选项并定位无线调试",
+                    startAction = {
+                        Icon(
+                            painter = painterResource(R.drawable.tile_ic_developer_options),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MiuixTheme.colorScheme.onSurface
+                        )
+                    },
+                    onClick = {
+                        // 与系统设置「搜索无线调试 → 点击结果」同款高亮机制
+                        // EXTRA_FRAGMENT_ARG_KEY 是 hidden 常量，用字面量 ":settings:fragment_args_key"
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                                putExtra(":settings:fragment_args_key", "wireless_debugging")
+                            }
+                        )
+                    }
+                )
+            }
+        }
     }
 }
 

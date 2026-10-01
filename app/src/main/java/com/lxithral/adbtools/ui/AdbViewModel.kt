@@ -24,6 +24,8 @@ import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+/** 保存过的目标设备（手机作为 adb 客户端一键连接用） */
+
 class AdbViewModel(application: Application) : AndroidViewModel(application), FairMemoryReceiver.MemoryCleaner {
 
     companion object {
