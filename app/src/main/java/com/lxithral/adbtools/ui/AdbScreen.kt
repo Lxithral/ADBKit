@@ -242,11 +242,13 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
                         )
                     },
                     onClick = {
-                        // 与系统设置「搜索无线调试 → 点击结果」同款高亮机制
+                        // 与系统设置「搜索无线调试 → 点击结果」同款高亮机制：
+                        // 开发者选项里无线调试条目的 key（AOSP ToggleAdbWirelessPreferenceController，
+                        // Shizuku 同款写法），hyperOS/AOSP 均定位到此条目并高亮闪烁
                         // EXTRA_FRAGMENT_ARG_KEY 是 hidden 常量，用字面量 ":settings:fragment_args_key"
                         context.startActivity(
                             Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
-                                putExtra(":settings:fragment_args_key", "wireless_debugging")
+                                putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
                             }
                         )
                     }
