@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
@@ -21,8 +22,10 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.lxithral.adbtools.R
+import com.lxithral.adbtools.logic.FixedAdbPort
 import com.lxithral.adbtools.ui.component.rememberBlurBackdrop
 import com.lxithral.adbtools.ui.navigation.BottomBarSlot
 import com.lxithral.adbtools.ui.theme.ThemeState
@@ -31,6 +34,7 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -178,6 +182,8 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
 
         item {
             SmallTitle(text = "无线调试")
+            var showPortDialog by remember { mutableStateOf(false) }
+            var portInput by remember { mutableStateOf("") }
             Card(
                 modifier = Modifier.padding(horizontal = 12.dp)
             ) {
@@ -219,6 +225,106 @@ fun HomeContent(viewModel: AdbViewModel, padding: PaddingValues, scrollBehavior:
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                SwitchPreference(
+                    title = "固定端口",
+                    summary = when {
+                        !viewModel.developerOptionsEnabled -> "请先开启开发者选项"
+                        viewModel.fixedPortEnabled && isIpv4(viewModel.ipAddress) ->
+                            "已开启 (${viewModel.ipAddress}:${viewModel.fixedPortValue})"
+                        viewModel.fixedPortEnabled -> "已开启 (端口 ${viewModel.fixedPortValue})"
+                        else -> "已关闭"
+                    },
+                    checked = viewModel.fixedPortEnabled,
+                    enabled = viewModel.developerOptionsEnabled,
+                    onCheckedChange = { viewModel.toggleFixedPort(it) },
+                    startAction = {
+                        Icon(
+                            painter = painterResource(R.drawable.tile_ic_wireless_debugging),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                )
+                AnimatedVisibility(
+                    visible = viewModel.fixedPortEnabled,
+                    enter = expandVertically(expandFrom = Alignment.Top),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top)
+                ) {
+                    // 固定的是经典 ADB 直连端口；无线调试(TLS)的随机端口与此并行，不受影响
+                    val fixedText = when {
+                        !isIpv4(viewModel.ipAddress) -> "未连接 Wi-Fi"
+                        else -> "直连地址：${viewModel.ipAddress}:${viewModel.fixedPortValue}（无线调试仍用随机端口）"
+                    }
+                    Text(
+                        text = fixedText,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                ArrowPreference(
+                    title = "自定义端口",
+                    summary = "当前端口：${viewModel.fixedPortValue}（范围 1024-65535）",
+                    onClick = {
+                        portInput = viewModel.fixedPortValue.toString()
+                        showPortDialog = true
+                    },
+                )
+            }
+            OverlayDialog(
+                title = "自定义端口",
+                summary = "范围 1024-65535；固定端口开启时保存会立即重启 adbd 生效",
+                show = showPortDialog,
+                onDismissRequest = { showPortDialog = false }
+            ) {
+                var errorText by remember { mutableStateOf<String?>(null) }
+                TextField(
+                    value = portInput,
+                    onValueChange = { v ->
+                        if (v.length <= 5 && v.all { it.isDigit() }) portInput = v
+                        errorText = null
+                    },
+                    label = "端口号",
+                    maxLines = 1,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                )
+                errorText?.let { msg ->
+                    Text(
+                        text = msg,
+                        style = MiuixTheme.textStyles.body2,
+                        color = Color.Red,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        text = "取消",
+                        onClick = { showPortDialog = false },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(20.dp))
+                    TextButton(
+                        text = "保存",
+                        onClick = {
+                            val port = portInput.toIntOrNull()
+                            if (port == null || !FixedAdbPort.isValidPort(port)) {
+                                errorText = "端口无效，范围 1024-65535"
+                            } else {
+                                viewModel.applyFixedPort(port)
+                                showPortDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.lxithral.adbtools.logic.FixedAdbPort
 import com.lxithral.adbtools.logic.WirelessDebugging
 import com.lxithral.adbtools.logic.executeShellCommand
 import com.lxithral.adbtools.memory.FairMemoryReceiver
@@ -30,6 +31,7 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
 
     companion object {
         private const val TAG = "AdbViewModel"
+        private const val KEY_FIXED_PORT = "fixed_port"
     }
 
     var wirelessAdbEnabled by mutableStateOf(value = false)
@@ -45,6 +47,13 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
         private set
 
     var usbSecurityEnabled by mutableStateOf(value = false)
+        private set
+
+    var fixedPortEnabled by mutableStateOf(value = false)
+        private set
+
+    /** 显示用端口：开启时为实际生效端口，关闭时为上次保存的自定义端口 */
+    var fixedPortValue by mutableStateOf(value = FixedAdbPort.DEFAULT_PORT)
         private set
 
     var rootGranted by mutableStateOf(value = false)
@@ -105,6 +114,15 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
         developerOptionsEnabled = batchResult.getOrElse(2) { "" }.trim() == "1"
         usbInstallEnabled = batchResult.getOrElse(3) { "" }.trim() == "1"
         usbSecurityEnabled = batchResult.getOrElse(4) { "" }.trim() == "1"
+        // 固定端口走 logic 层单独读取（getprop 全局可读，无 Root 也能正确显示）
+        fixedPortEnabled = FixedAdbPort.getEnabled(context)
+        fixedPortValue = if (fixedPortEnabled) {
+            val p = FixedAdbPort.getPort(context)
+            sharedPrefs.edit().putInt(KEY_FIXED_PORT, p).apply()
+            p
+        } else {
+            sharedPrefs.getInt(KEY_FIXED_PORT, FixedAdbPort.DEFAULT_PORT)
+        }
 
         rootGranted = Shell.isAppGrantedRoot() == true
         ipAddress = WirelessDebugging.getAddress(context)
@@ -204,6 +222,50 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
             refreshStateSync()
             // 端口属性由 adbd 稍后写入，补刷一次
             delay(1500)
+            refreshStateSync()
+        }
+    }
+
+    fun toggleFixedPort(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = getApplication<Application>()
+            val port = sharedPrefs.getInt(KEY_FIXED_PORT, FixedAdbPort.DEFAULT_PORT)
+            val ok = FixedAdbPort.setEnabled(context, enabled, port)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    when {
+                        !ok -> "命令执行失败，请检查 Root 权限"
+                        enabled -> "已开启固定端口 ($port)"
+                        else -> "已关闭固定端口"
+                    },
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            delay(200.milliseconds)
+            refreshStateSync()
+        }
+    }
+
+    /** 保存自定义端口：开启状态下立即应用（重启 adbd），关闭状态仅保存、开启时生效 */
+    fun applyFixedPort(port: Int) {
+        if (!FixedAdbPort.isValidPort(port)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = getApplication<Application>()
+            sharedPrefs.edit().putInt(KEY_FIXED_PORT, port).apply()
+            val ok = if (fixedPortEnabled) FixedAdbPort.setEnabled(context, true, port) else true
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    when {
+                        !ok -> "命令执行失败，请检查 Root 权限"
+                        fixedPortEnabled -> "端口已改为 $port，adbd 已重启"
+                        else -> "端口已保存为 $port，开启固定端口时生效"
+                    },
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            delay(200.milliseconds)
             refreshStateSync()
         }
     }
