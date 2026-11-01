@@ -14,6 +14,7 @@ import com.lxithral.adbtools.logic.FixedAdbPort
 import com.lxithral.adbtools.logic.WirelessDebugging
 import com.lxithral.adbtools.logic.executeShellCommand
 import com.lxithral.adbtools.memory.FairMemoryReceiver
+import com.lxithral.adbtools.quick.SwitchesWidget
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -131,8 +132,16 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
     }
 
     fun toggleDeveloperOptions(enabled: Boolean) {
-        val value = if (enabled) "1" else "0"
-        executeAction("settings put global development_settings_enabled $value", if (enabled) "开启" else "关闭")
+        // 与系统设置一致：关闭开发者选项时级联关闭 USB 与无线调试（移植自 DevSwitch）
+        val command = if (enabled) {
+            "settings put global development_settings_enabled 1"
+        } else {
+            "settings put global development_settings_enabled 0; " +
+                "settings put global adb_enabled 0; " +
+                "settings put --user current global adb_wifi_enabled 0; " +
+                "settings put secure adb_wifi_enabled 0"
+        }
+        executeAction(command, if (enabled) "开启" else "关闭")
     }
 
     fun toggleUsbDebugging(enabled: Boolean) {
@@ -211,6 +220,8 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
             }
             delay(200.milliseconds)
             refreshStateSync()
+            // 状态可能已变，同步桌面小部件
+            SwitchesWidget.updateAll(context)
         }
     }
 
@@ -223,6 +234,7 @@ class AdbViewModel(application: Application) : AndroidViewModel(application), Fa
             // 端口属性由 adbd 稍后写入，补刷一次
             delay(1500)
             refreshStateSync()
+            SwitchesWidget.updateAll(context)
         }
     }
 

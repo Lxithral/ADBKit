@@ -27,7 +27,40 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- 桌面长按快捷方式的落点：无界面，切一个开关即退出。
+             不导出；快捷方式由桌面代替应用启动。 -->
+        <activity
+            android:name=".quick.ToggleActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- 桌面小部件。必须对桌面导出，所以它只负责绘制；
+             点按交给下面未导出的 receiver，避免其他应用伪造切换。 -->
+        <receiver
+            android:name=".quick.SwitchesWidget"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <!-- 受保护的系统广播，语言变化时重绘文字。 -->
+                <action android:name="android.intent.action.LOCALE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_switches" />
+        </receiver>
+
+        <receiver
+            android:name=".quick.WidgetToggleReceiver"
+            android:exported="false" />
 
         <service
             android:name=".tile.UsbDebuggingTile"

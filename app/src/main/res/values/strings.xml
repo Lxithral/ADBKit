@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">ADBKit</string>
+    <string name="widget_name">ADBKit 调试开关</string>
+    <string name="widget_description">一键切换开发者选项与调试开关</string>
+    <string name="widget_short_developer">开发者选项</string>
+    <string name="widget_short_usb">USB 调试</string>
+    <string name="widget_short_wireless">无线调试</string>
 </resources>

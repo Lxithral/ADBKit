@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面图标长按快捷方式，各自经 ToggleActivity 切换一个开关。
+     minSdk 33 已高于无线调试要求的 Android 11，无需 v30 拆分。 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_usb"
+        android:shortcutId="toggle_usb"
+        android:shortcutShortLabel="@string/widget_short_usb">
+        <intent
+            android:action="com.lxithral.adbtools.action.TOGGLE_USB_DEBUGGING"
+            android:targetClass="com.lxithral.adbtools.quick.ToggleActivity"
+            android:targetPackage="com.lxithral.adbtools" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_developer"
+        android:shortcutId="toggle_developer"
+        android:shortcutShortLabel="@string/widget_short_developer">
+        <intent
+            android:action="com.lxithral.adbtools.action.TOGGLE_DEVELOPER_OPTIONS"
+            android:targetClass="com.lxithral.adbtools.quick.ToggleActivity"
+            android:targetPackage="com.lxithral.adbtools" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_wireless"
+        android:shortcutId="toggle_wireless"
+        android:shortcutShortLabel="@string/widget_short_wireless">
+        <intent
+            android:action="com.lxithral.adbtools.action.TOGGLE_WIRELESS_DEBUGGING"
+            android:targetClass="com.lxithral.adbtools.quick.ToggleActivity"
+            android:targetPackage="com.lxithral.adbtools" />
+    </shortcut>
+</shortcuts>

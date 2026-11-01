@@ -8,6 +8,7 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
 import com.lxithral.adbtools.MainApp
+import com.lxithral.adbtools.quick.SwitchesWidget
 import com.topjohnwu.superuser.Shell
 
 abstract class BaseTileService : TileService() {
@@ -77,6 +78,8 @@ abstract class BaseTileService : TileService() {
         Thread {
             toggleFeature()
             updateTileState()
+            // 设置可能已变，同步桌面小部件
+            SwitchesWidget.updateAll(this)
             scheduleKill()
         }.start()
     }
